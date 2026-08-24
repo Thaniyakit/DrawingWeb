@@ -262,9 +262,14 @@ export function useCanvasEngine() {
     setSelectedIds([]);
   }, []);
 
+  const pointerToWorldRaw = useCallback(
+    (screenPt: Point): Point => screenToWorld(screenPt, view),
+    [view],
+  );
+
   const pointerToWorld = useCallback(
-    (screenPt: Point): Point => snapToGrid(screenToWorld(screenPt, view), snapEnabled),
-    [view, snapEnabled],
+    (screenPt: Point): Point => snapToGrid(pointerToWorldRaw(screenPt), snapEnabled),
+    [pointerToWorldRaw, snapEnabled],
   );
 
   return {
@@ -283,7 +288,7 @@ export function useCanvasEngine() {
     pushHistory, undo, redo,
     nextId, addObject, removeObject, clearAll, newProject,
     exportProject, loadProject,
-    pointerToWorld,
+    pointerToWorld, pointerToWorldRaw,
     canUndo: historyRef.current.length > 0,
     canRedo: redoRef.current.length > 0,
   };
