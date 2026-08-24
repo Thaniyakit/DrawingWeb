@@ -5,7 +5,7 @@ type IconName =
   | 'pointer' | 'multi' | 'pen' | 'wand' | 'line' | 'rect' | 'circle'
   | 'poly' | 'curve' | 'ruler' | 'calib' | 'text' | 'eraser' | 'trash'
   | 'undo' | 'redo' | 'grid' | 'snap' | 'clear' | 'eye' | 'eyeoff'
-  | 'lock' | 'unlock' | 'chevron';
+  | 'lock' | 'unlock' | 'chevron' | 'copy' | 'edit' | 'up' | 'down';
 
 const paths: Record<IconName, string> = {
   fileplus: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M12 18v-6 M9 15h6',
@@ -25,6 +25,10 @@ const paths: Record<IconName, string> = {
   grid: 'M4 4h16v16H4z M4 10h16 M10 4v16', snap: 'M12 3v18 M3 12h18 M7 7h10v10H7z', clear: 'M5 5l14 14 M19 5L5 19',
   eye: 'M2 12s3-6 10-6 10 6 10 6-3 6-10 6S2 12 2 12z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', eyeoff: 'M3 3l18 18 M10.6 6.2A10.8 10.8 0 0 1 12 6c7 0 10 6 10 6a18 18 0 0 1-3 3.8 M6.7 6.7C3.6 8.5 2 12 2 12s3 6 10 6a10 10 0 0 0 3.3-.5',
   lock: 'M6 10V7a6 6 0 0 1 12 0v3 M5 10h14v11H5z M12 14v3', unlock: 'M18 10V7a6 6 0 0 0-11.5-2 M5 10h14v11H5z M12 14v3', chevron: 'M6 9l6 6 6-6',
+  copy: 'M8 8h11v11H8z M5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1',
+  edit: 'M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10z M13.5 7.5l3 3',
+  up: 'M12 19V5 M6 11l6-6 6 6',
+  down: 'M12 5v14 M6 13l6 6 6-6',
 };
 
 export function Icon({ name, size = 20, ...props }: { name: IconName; size?: number } & SVGProps<SVGSVGElement>) {

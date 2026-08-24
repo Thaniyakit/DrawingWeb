@@ -1,4 +1,5 @@
 import { useCanvasEngine } from './hooks/useCanvasEngine';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { TopBar } from './components/TopBar';
 import { ToolSidebar } from './components/Sidebar/ToolSidebar';
 import { SketchCanvas } from './components/Canvas/SketchCanvas';
@@ -8,6 +9,7 @@ import './App.css';
 
 export default function App() {
   const engine = useCanvasEngine();
+  useKeyboardShortcuts(engine);
 
   return (
     <div className="app">

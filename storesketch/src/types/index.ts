@@ -36,11 +36,27 @@ export interface ErasePath {
   maxObjectId?: number;
 }
 
+/**
+ * A real drawing layer. Objects are assigned to a layer through layerId.
+ * Layer order is bottom -> top in the layers array.
+ */
+export interface SketchLayer {
+  id: number;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+}
+
 export interface BaseSketchObject {
   id: number;
+  /** Drawing layer that owns this object. v1/v2 files may omit it before migration. */
+  layerId?: number;
   color: string;
   width: number;
   dash: DashStyle;
+  /** 0 = invisible, 1 = fully opaque. Missing values are treated as 1. */
+  opacity?: number;
+  /** Legacy per-object flags kept only for backward compatibility. */
   visible?: boolean;
   locked?: boolean;
   name?: string;
@@ -128,13 +144,10 @@ export interface ImageObject extends BaseSketchObject {
   y1: number;
   x2: number;
   y2: number;
+  /** Data URL for imported images so the project stays self-contained. */
   src?: string;
 }
 
-/**
- * Discriminated union: after checking object.type, TypeScript knows
- * which geometry fields are available and prevents invalid field access.
- */
 export type SketchObject =
   | StrokeObject
   | EraseObject
@@ -147,8 +160,8 @@ export type SketchObject =
   | TextObject
   | ImageObject;
 
-export type SketchObjectStyle = Pick<BaseSketchObject, 'id' | 'color' | 'width' | 'dash'>
-  & Pick<Partial<BaseSketchObject>, 'visible' | 'locked' | 'name' | 'rotation'>;
+export type SketchObjectStyle = Pick<BaseSketchObject, 'id' | 'layerId' | 'color' | 'width' | 'dash'>
+  & Pick<Partial<BaseSketchObject>, 'visible' | 'locked' | 'name' | 'rotation' | 'opacity'>;
 
 export interface ViewState {
   s: number;
@@ -175,12 +188,25 @@ export interface ProjectMeta extends ProjectState {
   // Kept as a string in the file format for backward compatibility with v1.
   scale: string;
   view: ViewState;
+  /** Optional calibration override: real meters represented by one 24px grid square. */
+  metersPerSquare?: number;
 }
 
 export interface ProjectFile {
   app: 'StoreSketch';
-  /** v1 = original format, v2 = centralized project state + fixed rotation model. */
-  version: 1 | 2;
+  /**
+   * v1 = original format
+   * v2 = centralized project state + fixed rotation model
+   * v3 = real user-created drawing layers
+   * v4 = image import/export + calibration
+   */
+  version: 1 | 2 | 3 | 4;
   meta: ProjectMeta;
   objects: SketchObject[];
+  /** Added in v3. Array order is bottom -> top. */
+  layers?: SketchLayer[];
+  /** Added in v3. */
+  activeLayerId?: number;
+  /** Object ids with persistent dimension overlays. Added as an optional v3 field. */
+  dimensionObjectIds?: number[];
 }

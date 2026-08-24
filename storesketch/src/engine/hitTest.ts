@@ -129,7 +129,7 @@ function isClosedPolyline(points: Point[]): boolean {
 
 /** Precise point hit-test used by select, text edit and object eraser. */
 export function hitTestObject(object: SketchObject, point: Point, tolerance = 6): boolean {
-  if (object.visible === false || object.type === 'erase') return false;
+  if (object.visible === false || object.locked === true || object.type === 'erase') return false;
   const strokeTolerance = tolerance + Math.max(1, object.width) / 2;
 
   switch (object.type) {
@@ -172,7 +172,7 @@ export function hitTestObjects(objects: SketchObject[], point: Point, tolerance 
 
 /** Path hit-test used by the free eraser for non-stroke objects. */
 export function eraserHitsObject(object: SketchObject, eraserStart: Point, eraserEnd: Point, radius: number): boolean {
-  if (object.type === 'erase' || object.visible === false) return false;
+  if (object.type === 'erase' || object.visible === false || object.locked === true) return false;
   const thickness = radius + Math.max(1, object.width) / 2;
 
   switch (object.type) {

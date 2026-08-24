@@ -3,6 +3,7 @@ import { GRID_PX } from './constants';
 import { worldToScreen } from './geometry';
 import { objectBounds, objectCenter } from './bounds';
 import { TEXT_FONT_FAMILY } from './textMetrics';
+import { getCachedImage, loadSketchImage } from './imageCache';
 
 export function drawGrid(
   ctx: CanvasRenderingContext2D,
@@ -18,17 +19,23 @@ export function drawGrid(
   const step = GRID_PX * view.s;
   if (step < 4) return;
 
-  const offsetX = view.tx % step;
-  const offsetY = view.ty % step;
+  // Use world grid indices rather than view.tx % step so labels keep the
+  // correct real-world value while the user pans the canvas.
+  const firstColumn = Math.floor(-view.tx / step) - 1;
+  const lastColumn = Math.ceil((w - view.tx) / step) + 1;
+  const firstRow = Math.floor(-view.ty / step) - 1;
+  const lastRow = Math.ceil((h - view.ty) / step) + 1;
 
   ctx.strokeStyle = 'rgba(20,24,29,0.08)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let x = offsetX; x < w; x += step) {
+  for (let index = firstColumn; index <= lastColumn; index += 1) {
+    const x = view.tx + index * step;
     ctx.moveTo(x, 0);
     ctx.lineTo(x, h);
   }
-  for (let y = offsetY; y < h; y += step) {
+  for (let index = firstRow; index <= lastRow; index += 1) {
+    const y = view.ty + index * step;
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
   }
@@ -37,24 +44,20 @@ export function drawGrid(
   ctx.save();
   ctx.fillStyle = 'rgba(20,24,29,0.62)';
   ctx.font = `${Math.max(10, Math.min(13, 11 * view.s))}px monospace`;
-  ctx.textBaseline = 'top';
   const majorEvery = 5;
-  const firstColumn = Math.ceil(-offsetX / step);
-  for (let index = firstColumn; ; index += 1) {
-    const x = offsetX + index * step;
-    if (x > w) break;
-    if (index % majorEvery === 0 && x >= 0) {
-      ctx.fillText(`${(index * metersPerSquare).toFixed(1)} m.`, x + 3, 3);
-    }
+  ctx.textBaseline = 'top';
+  for (let index = firstColumn; index <= lastColumn; index += 1) {
+    if (index % majorEvery !== 0) continue;
+    const x = view.tx + index * step;
+    if (x < 0 || x > w) continue;
+    ctx.fillText(`${(index * metersPerSquare).toFixed(1)} m.`, x + 3, 3);
   }
   ctx.textBaseline = 'middle';
-  const firstRow = Math.ceil(-offsetY / step);
-  for (let index = firstRow; ; index += 1) {
-    const y = offsetY + index * step;
-    if (y > h) break;
-    if (index % majorEvery === 0 && y >= 0) {
-      ctx.fillText(`${(index * metersPerSquare).toFixed(1)} m.`, 5, y);
-    }
+  for (let index = firstRow; index <= lastRow; index += 1) {
+    if (index % majorEvery !== 0) continue;
+    const y = view.ty + index * step;
+    if (y < 0 || y > h) continue;
+    ctx.fillText(`${(index * metersPerSquare).toFixed(1)} m.`, 5, y);
   }
   ctx.restore();
 }
@@ -70,6 +73,7 @@ export function drawObjects(
   metersPerSquare = 1,
   _erasePaths: ErasePath[] = [],
   clearCanvas = true,
+  onImageReady?: () => void,
 ) {
   if (clearCanvas) ctx.clearRect(0, 0, w, h);
 
@@ -78,6 +82,7 @@ export function drawObjects(
 
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = Math.max(0, Math.min(1, obj.opacity ?? 1));
     ctx.strokeStyle = obj.color || '#14181D';
     ctx.fillStyle = obj.color || '#14181D';
     ctx.lineWidth = (obj.width || 1) * view.s;
@@ -190,12 +195,27 @@ export function drawObjects(
         ctx.restore();
         break;
       }
-      case 'image':
-        // Image import/rendering is intentionally not part of P1.
+      case 'image': {
+        if (!obj.src) break;
+        const image = getCachedImage(obj.src);
+        if (!image) {
+          void loadSketchImage(obj.src).then(() => onImageReady?.()).catch(() => undefined);
+          break;
+        }
+        const center = worldToScreen(objectCenter(obj), view);
+        const width = Math.abs(obj.x2 - obj.x1) * view.s;
+        const height = Math.abs(obj.y2 - obj.y1) * view.s;
+        ctx.save();
+        ctx.translate(center.x, center.y);
+        ctx.rotate(obj.rotation ?? 0);
+        ctx.drawImage(image, -width / 2, -height / 2, width, height);
+        ctx.restore();
         break;
+      }
     }
 
     if (selectedIds.length <= 1 && (obj.id === selectedId || selectedIds.includes(obj.id))) {
+      ctx.globalAlpha = 1;
       drawSingleSelection(ctx, obj, view, metersPerSquare);
     }
     ctx.restore();
@@ -213,9 +233,10 @@ function drawSingleSelection(
   const bottomRight = worldToScreen({ x: bounds.right, y: bounds.bottom }, view);
   // Text bounds already use the visible glyph ink box, so do not add the
   // generic drawing padding that made the right side look oversized.
-  const padding = obj.type === 'text' ? 5 : Math.max(5, obj.width * view.s + 2);
+  const padding = obj.type === 'text' ? 0 : Math.max(5, obj.width * view.s + 2);
 
-  ctx.strokeStyle = '#F2A63C';
+  const selectionColor = obj.locked ? '#7C93A6' : '#F2A63C';
+  ctx.strokeStyle = selectionColor;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 3]);
   ctx.strokeRect(
@@ -226,7 +247,17 @@ function drawSingleSelection(
   );
   ctx.setLineDash([]);
 
-  ctx.fillStyle = '#F2A63C';
+  if (obj.locked) {
+    const centerX = (topLeft.x + bottomRight.x) / 2;
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = selectionColor;
+    ctx.fillText('LOCKED', centerX, topLeft.y - padding - 6);
+    return;
+  }
+
+  ctx.fillStyle = selectionColor;
   const handleSize = 7;
   for (const [x, y] of [
     [topLeft.x - padding, topLeft.y - padding],
@@ -239,12 +270,12 @@ function drawSingleSelection(
 
   const centerX = (topLeft.x + bottomRight.x) / 2;
   const rotateY = topLeft.y - padding - 28;
-  ctx.strokeStyle = '#F2A63C';
+  ctx.strokeStyle = selectionColor;
   ctx.beginPath();
   ctx.moveTo(centerX, topLeft.y - padding);
   ctx.lineTo(centerX, rotateY);
   ctx.stroke();
-  ctx.fillStyle = '#F2A63C';
+  ctx.fillStyle = selectionColor;
   ctx.fillRect(centerX - 6, rotateY - 6, 12, 12);
 
   const widthMeters = Math.abs(bounds.right - bounds.left) / 24 * metersPerSquare;
@@ -261,7 +292,7 @@ function drawSingleSelection(
 
   if (obj.type === 'curve') {
     const control = worldToScreen({ x: obj.controlX, y: obj.controlY }, view);
-    ctx.fillStyle = '#F2A63C';
+    ctx.fillStyle = selectionColor;
     ctx.fillRect(control.x - 5, control.y - 5, 10, 10);
   }
 }
