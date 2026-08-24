@@ -1,3 +1,5 @@
 node_modules
 *.zip
 storesketch_6.html
+storePresets.ts
+checklist.ts

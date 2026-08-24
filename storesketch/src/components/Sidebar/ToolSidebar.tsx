@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ToolType } from '../../types';
 import { SCALE_OPTIONS, SWATCHES } from '../../engine/constants';
 import type { useCanvasEngine } from '../../hooks/useCanvasEngine';
@@ -60,10 +60,22 @@ export function ToolSidebar({ engine }: { engine: Engine }) {
   const { tool, setTool, color, setColor, lineWidth, setLineWidth, dash, setDash, eraserSize, setEraserSize,
     snapEnabled, setSnapEnabled, snapLineEnabled, setSnapLineEnabled,
     dimEnabled, setDimEnabled, dimensionObjectIds, clearDimensions, gridVisible, setGridVisible,
-    scale, setScale, metersPerSquare, isCalibrated, clearCalibration, undo, redo, clearAll, canUndo, canRedo } = engine;
+    scale, setScale, metersPerSquare, scaleLabel, isCalibrated, clearCalibration, undo, redo, clearAll, canUndo, canRedo,
+    objects, selectedObjectIds, beginSelectedStyleEdit, endSelectedStyleEdit, updateSelectedOpacity } = engine;
 
   const [colorText, setColorText] = useState(color);
   const [colorError, setColorError] = useState(false);
+
+  const selectedObjects = useMemo(
+    () => objects.filter((object) => selectedObjectIds.includes(object.id)),
+    [objects, selectedObjectIds],
+  );
+  const selectedTransparency = selectedObjects.length
+    ? Math.round((1 - (selectedObjects[0].opacity ?? 1)) * 100)
+    : 0;
+  const mixedTransparency = selectedObjects.some((object) => (
+    Math.round((1 - (object.opacity ?? 1)) * 100) !== selectedTransparency
+  ));
 
   useEffect(() => {
     setColorText(color);
@@ -78,6 +90,11 @@ export function ToolSidebar({ engine }: { engine: Engine }) {
     }
     setColor(next);
     setColorError(false);
+  }
+
+  function confirmClearAll() {
+    if (!objects.length) return;
+    if (window.confirm('คุณต้องการล้างทั้งหมดใช่หรือไม่')) clearAll();
   }
 
   return (
@@ -105,7 +122,7 @@ export function ToolSidebar({ engine }: { engine: Engine }) {
             <Icon name="snap" size={16} /><span>ล็อกจุด</span>
           </button>
           <button className={`assist-btn${snapLineEnabled ? ' on' : ''}`} onClick={() => setSnapLineEnabled(!snapLineEnabled)} title="Snap เส้น: ปิดเส้นปากกาเมื่อปลายเข้าใกล้จุดเริ่ม">
-            <Icon name="poly" size={16} /><span>Snap เส้น</span>
+            <Icon name="osnap" size={16} /><span>Snap เส้น</span>
           </button>
           <button className={`assist-btn${dimEnabled ? ' on dim-on' : ''}`} onClick={() => setDimEnabled(!dimEnabled)} title="Dim: คลิกวัตถุเพื่อเพิ่ม/เอาเส้นบอกขนาดออก">
             <Icon name="ruler" size={16} /><span>Dim</span>
@@ -128,15 +145,22 @@ export function ToolSidebar({ engine }: { engine: Engine }) {
         <div className="tool-grid">
           <button className="tool-btn" disabled={!canUndo} onClick={undo} title="เลิกทำ (Ctrl/Cmd+Z)"><Icon name="undo" /></button>
           <button className="tool-btn" disabled={!canRedo} onClick={redo} title="ทำซ้ำ (Ctrl/Cmd+Shift+Z หรือ Ctrl/Cmd+Y)"><Icon name="redo" /></button>
-          <button className="tool-btn" onClick={clearAll} title="ล้างทั้งหมด"><Icon name="clear" /></button>
+          <button className="tool-btn" onClick={confirmClearAll} title="ล้าง Object ทั้งหมดในหน้านี้"><Icon name="clear" /></button>
         </div>
         <div className="side-lbl">มาตราส่วน</div>
-        <select className="sel" value={scale} onChange={(e) => setScale(Number(e.target.value))}>
+        <select
+          className="sel"
+          value={isCalibrated ? 'calibrated' : String(scale)}
+          onChange={(event) => {
+            if (event.target.value !== 'calibrated') setScale(Number(event.target.value));
+          }}
+        >
+          {isCalibrated && <option value="calibrated">{scaleLabel} (สอบเทียบ)</option>}
           {SCALE_OPTIONS.map((s) => <option key={s} value={s}>1:{s}</option>)}
         </select>
         {isCalibrated && (
           <div className="calibration-status">
-            <div><strong>สอบเทียบแล้ว</strong><span>{metersPerSquare.toFixed(4)} ม./ช่อง</span></div>
+            <div><strong>{scaleLabel}</strong><span>{metersPerSquare.toFixed(4)} ม./ช่อง</span></div>
             <button className="mini-action" onClick={clearCalibration}>กลับไปใช้ 1:{scale}</button>
           </div>
         )}
@@ -199,6 +223,47 @@ export function ToolSidebar({ engine }: { engine: Engine }) {
           <option value="dot">·· จุด</option>
           <option value="dashdot">╌· ประ-จุด</option>
         </select>
+      </div>
+
+      <div className="side-sec transparency-side-sec">
+        <h4>Object</h4>
+        <div className="side-lbl transparency-side-label">
+          <span>โปร่งใส</span>
+          <strong>{selectedObjects.length ? (mixedTransparency ? 'หลายค่า' : `${selectedTransparency}%`) : '—'}</strong>
+        </div>
+        {selectedObjects.length ? (
+          <>
+            <input
+              className="transparency-side-range"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={selectedTransparency}
+              onPointerDown={beginSelectedStyleEdit}
+              onPointerUp={endSelectedStyleEdit}
+              onFocus={beginSelectedStyleEdit}
+              onBlur={endSelectedStyleEdit}
+              onChange={(event) => updateSelectedOpacity(Number(event.target.value))}
+            />
+            <div className="transparency-side-number">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={selectedTransparency}
+                onFocus={beginSelectedStyleEdit}
+                onBlur={endSelectedStyleEdit}
+                onChange={(event) => updateSelectedOpacity(Math.max(0, Math.min(100, Number(event.target.value) || 0)))}
+              />
+              <span>%</span>
+            </div>
+            <div className="transparency-side-note">0 = ทึบ • 100 = ใส</div>
+          </>
+        ) : (
+          <div className="transparency-side-note">เลือก Object ก่อนปรับค่า</div>
+        )}
       </div>
     </aside>
   );

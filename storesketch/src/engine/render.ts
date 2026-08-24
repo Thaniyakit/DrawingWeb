@@ -5,6 +5,12 @@ import { objectBounds, objectCenter } from './bounds';
 import { TEXT_FONT_FAMILY } from './textMetrics';
 import { getCachedImage, loadSketchImage } from './imageCache';
 
+function formatMeters(value: number): string {
+  const abs = Math.abs(value);
+  const decimals = abs < 10 ? 2 : abs < 100 ? 1 : 0;
+  return value.toFixed(decimals).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+}
+
 export function drawGrid(
   ctx: CanvasRenderingContext2D,
   view: ViewState,
@@ -50,14 +56,14 @@ export function drawGrid(
     if (index % majorEvery !== 0) continue;
     const x = view.tx + index * step;
     if (x < 0 || x > w) continue;
-    ctx.fillText(`${(index * metersPerSquare).toFixed(1)} m.`, x + 3, 3);
+    ctx.fillText(`${formatMeters(index * metersPerSquare)} m.`, x + 3, 3);
   }
   ctx.textBaseline = 'middle';
   for (let index = firstRow; index <= lastRow; index += 1) {
     if (index % majorEvery !== 0) continue;
     const y = view.ty + index * step;
     if (y < 0 || y > h) continue;
-    ctx.fillText(`${(index * metersPerSquare).toFixed(1)} m.`, 5, y);
+    ctx.fillText(`${formatMeters(index * metersPerSquare)} m.`, 5, y);
   }
   ctx.restore();
 }
@@ -226,7 +232,7 @@ function drawSingleSelection(
   ctx: CanvasRenderingContext2D,
   obj: SketchObject,
   view: ViewState,
-  metersPerSquare: number,
+  _metersPerSquare: number,
 ) {
   const bounds = objectBounds(obj);
   const topLeft = worldToScreen({ x: bounds.left, y: bounds.top }, view);
@@ -278,17 +284,7 @@ function drawSingleSelection(
   ctx.fillStyle = selectionColor;
   ctx.fillRect(centerX - 6, rotateY - 6, 12, 12);
 
-  const widthMeters = Math.abs(bounds.right - bounds.left) / 24 * metersPerSquare;
-  const heightMeters = Math.abs(bounds.bottom - bounds.top) / 24 * metersPerSquare;
-  const label = `${widthMeters.toFixed(2)} × ${heightMeters.toFixed(2)} ม.`;
-  ctx.font = '12px monospace';
-  const labelWidth = ctx.measureText(label).width + 12;
-  ctx.fillStyle = 'rgba(242,166,60,0.95)';
-  ctx.fillRect(centerX - labelWidth / 2, rotateY - 31, labelWidth, 20);
-  ctx.fillStyle = '#14181D';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, centerX, rotateY - 21);
+  // Size is rendered as a clickable DOM overlay by SelectionSizeEditor.
 
   if (obj.type === 'curve') {
     const control = worldToScreen({ x: obj.controlX, y: obj.controlY }, view);

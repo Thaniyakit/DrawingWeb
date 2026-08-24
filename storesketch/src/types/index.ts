@@ -181,6 +181,8 @@ export interface ProjectState {
   shopName: string;
   requirement: string;
   north: number;
+  /** Local calendar date (YYYY-MM-DD) when this drawing project was first created. */
+  createdDate: string;
   checklist: ChecklistItemState[];
 }
 
@@ -199,8 +201,9 @@ export interface ProjectFile {
    * v2 = centralized project state + fixed rotation model
    * v3 = real user-created drawing layers
    * v4 = image import/export + calibration
+   * v5 = project creation date + unified calibrated scale display
    */
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   meta: ProjectMeta;
   objects: SketchObject[];
   /** Added in v3. Array order is bottom -> top. */

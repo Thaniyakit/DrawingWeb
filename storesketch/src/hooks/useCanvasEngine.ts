@@ -11,10 +11,10 @@ import type {
   ToolType,
   ViewState,
 } from '../types';
-import { objectBounds } from '../engine/bounds';
+import { getTextSize, groupBounds, objectBounds, objectCenter } from '../engine/bounds';
 import { GRID_PX } from '../engine/constants';
 import { screenToWorld, snapToGrid } from '../engine/geometry';
-import { scaleToMetersPerSquare } from '../engine/shapes';
+import { formatScaleValue, metersPerSquareToScale, scaleToMetersPerSquare } from '../engine/shapes';
 import { transformObject, translateBounds } from '../engine/transform';
 import { useHistory } from './useHistory';
 
@@ -23,14 +23,24 @@ const DUPLICATE_OFFSET = 24;
 const DEFAULT_LAYER_ID = 1;
 
 const DEFAULT_VIEW: ViewState = { s: 1, tx: 0, ty: 0 };
-const DEFAULT_PROJECT: ProjectState = {
-  projectName: '',
-  application: '',
-  shopName: '',
-  requirement: '',
-  north: 0,
-  checklist: [],
-};
+function localDateIso(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function createDefaultProjectState(): ProjectState {
+  return {
+    projectName: '',
+    application: '',
+    shopName: '',
+    requirement: '',
+    north: 0,
+    createdDate: localDateIso(),
+    checklist: [],
+  };
+}
 
 function createDefaultLayer(): SketchLayer {
   return { id: DEFAULT_LAYER_ID, name: 'Layer 1', visible: true, locked: false };
@@ -180,8 +190,8 @@ export function useCanvasEngine() {
   const [layers, setLayers] = useState<SketchLayer[]>(() => [createDefaultLayer()]);
   const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
   const [view, setView] = useState<ViewState>({ ...DEFAULT_VIEW });
-  const [project, setProject] = useState<ProjectState>(() => cloneProjectState(DEFAULT_PROJECT));
-  const [tool, setTool] = useState<ToolType>('pen');
+  const [project, setProject] = useState<ProjectState>(() => createDefaultProjectState());
+  const [tool, setToolState] = useState<ToolType>('pen');
   const [color, setColor] = useState('#14181D');
   const [lineWidth, setLineWidth] = useState(2);
   const [eraserSize, setEraserSize] = useState(26);
@@ -241,6 +251,13 @@ export function useCanvasEngine() {
     setSelectedId(null);
     setSelectedIds([]);
   }, []);
+
+  // Switching tools means the previous selection is no longer being edited.
+  // Clearing it here also covers keyboard shortcuts, not only toolbar clicks.
+  const setTool = useCallback((nextTool: ToolType) => {
+    if (nextTool !== tool) clearSelection();
+    setToolState(nextTool);
+  }, [clearSelection, tool]);
 
   const setDimEnabled = useCallback((enabled: boolean) => {
     setDimEnabledState(enabled);
@@ -528,7 +545,140 @@ export function useCanvasEngine() {
   }, [canEditActiveLayer, objects, pushHistory, selectedObjectIds]);
 
   const metersPerSquare = calibrationMetersPerSquare ?? scaleToMetersPerSquare(scale);
+
+  const resizeSelectedObjectsToMeters = useCallback((
+    widthMeters: number,
+    heightMeters: number,
+    preferredAxis: 'width' | 'height' = 'width',
+  ) => {
+    if (!selectedObjectIds.length || !canEditActiveLayer) return;
+    if (!Number.isFinite(widthMeters) || !Number.isFinite(heightMeters)) return;
+    if (widthMeters < 0 || heightMeters < 0) return;
+
+    const selected = objects.filter((object) => selectedObjectIds.includes(object.id));
+    if (!selected.length) return;
+    const singleLineLike = selected.length === 1 && (selected[0].type === 'line' || selected[0].type === 'measure');
+    if (singleLineLike) {
+      if (widthMeters === 0 && heightMeters === 0) return;
+    } else if (widthMeters <= 0 || heightMeters <= 0) {
+      return;
+    }
+
+    const targetWidth = widthMeters / metersPerSquare * GRID_PX;
+    const targetHeight = heightMeters / metersPerSquare * GRID_PX;
+    if (!Number.isFinite(targetWidth) || !Number.isFinite(targetHeight) || targetWidth < 0 || targetHeight < 0) return;
+
+    const currentSize = (() => {
+      if (selected.length > 1) {
+        const bounds = groupBounds(selected);
+        return { width: bounds.right - bounds.left, height: bounds.bottom - bounds.top };
+      }
+      const target = selected[0];
+      if (target.type === 'rect' || target.type === 'image') {
+        return { width: Math.abs(target.x2 - target.x1), height: Math.abs(target.y2 - target.y1) };
+      }
+      if (target.type === 'circle') {
+        return {
+          width: (target.rx ?? target.r ?? 0) * 2,
+          height: (target.ry ?? target.r ?? 0) * 2,
+        };
+      }
+      if (target.type === 'text') return getTextSize(target);
+      const bounds = objectBounds(target);
+      return { width: bounds.right - bounds.left, height: bounds.bottom - bounds.top };
+    })();
+    if (Math.abs(currentSize.width - targetWidth) < 0.0001 && Math.abs(currentSize.height - targetHeight) < 0.0001) return;
+
+    pushHistory();
+    const selectedSet = new Set(selectedObjectIds);
+
+    // A single intrinsic-box object can be sized exactly without changing its
+    // rotation. Multi-selection intentionally uses the same group transform as
+    // dragging a resize handle so its behavior stays familiar.
+    if (selected.length === 1) {
+      const target = selected[0];
+      const center = objectCenter(target);
+      let resized: SketchObject;
+
+      if (target.type === 'rect' || target.type === 'image') {
+        resized = {
+          ...target,
+          x1: center.x - targetWidth / 2,
+          y1: center.y - targetHeight / 2,
+          x2: center.x + targetWidth / 2,
+          y2: center.y + targetHeight / 2,
+        };
+      } else if (target.type === 'circle') {
+        resized = {
+          ...target,
+          cx: center.x,
+          cy: center.y,
+          rx: targetWidth / 2,
+          ry: targetHeight / 2,
+          r: undefined,
+        };
+      } else if (target.type === 'line' || target.type === 'measure') {
+        const signX = target.x2 >= target.x1 ? 1 : -1;
+        const signY = target.y2 >= target.y1 ? 1 : -1;
+        resized = {
+          ...target,
+          x1: center.x - signX * targetWidth / 2,
+          x2: center.x + signX * targetWidth / 2,
+          y1: center.y - signY * targetHeight / 2,
+          y2: center.y + signY * targetHeight / 2,
+        };
+      } else if (target.type === 'text') {
+        const bounds = objectBounds(target);
+        const textSize = getTextSize(target);
+        const currentWidth = Math.max(textSize.width, 0.001);
+        const currentHeight = Math.max(textSize.height, 0.001);
+        const scaleFactor = preferredAxis === 'height'
+          ? targetHeight / currentHeight
+          : targetWidth / currentWidth;
+        const scale = Math.max(0.01, scaleFactor);
+        const targetBounds = {
+          left: center.x - currentWidth * scale / 2,
+          top: center.y - currentHeight * scale / 2,
+          right: center.x + currentWidth * scale / 2,
+          bottom: center.y + currentHeight * scale / 2,
+        };
+        resized = transformObject(target, bounds, targetBounds, scale, scale);
+      } else {
+        const bounds = objectBounds(target);
+        const targetBounds = {
+          left: center.x - targetWidth / 2,
+          top: center.y - targetHeight / 2,
+          right: center.x + targetWidth / 2,
+          bottom: center.y + targetHeight / 2,
+        };
+        resized = transformObject(target, bounds, targetBounds);
+      }
+
+      setObjects((current) => current.map((object) => object.id === target.id ? resized : object));
+      return;
+    }
+
+    const from = groupBounds(selected);
+    const center = {
+      x: (from.left + from.right) / 2,
+      y: (from.top + from.bottom) / 2,
+    };
+    const to = {
+      left: center.x - targetWidth / 2,
+      top: center.y - targetHeight / 2,
+      right: center.x + targetWidth / 2,
+      bottom: center.y + targetHeight / 2,
+    };
+    const scaleX = targetWidth / Math.max(from.right - from.left, 0.001);
+    const scaleY = targetHeight / Math.max(from.bottom - from.top, 0.001);
+    setObjects((current) => current.map((object) => (
+      selectedSet.has(object.id) ? transformObject(object, from, to, scaleX, scaleY) : object
+    )));
+  }, [canEditActiveLayer, metersPerSquare, objects, pushHistory, selectedObjectIds]);
+
   const isCalibrated = calibrationMetersPerSquare !== null;
+  const effectiveScale = metersPerSquareToScale(metersPerSquare);
+  const scaleLabel = `1:${formatScaleValue(effectiveScale)}`;
 
   const setScale = useCallback((value: number) => {
     setScaleState(Math.max(1, Number(value) || 100));
@@ -577,22 +727,31 @@ export function useCanvasEngine() {
     setSelectedIds([object.id]);
   }, [activeLayerId, canEditActiveLayer, pushHistory, view.s, viewportCenterWorld]);
 
-  const createAutoRectangle = useCallback((widthMeters: number, heightMeters: number) => {
-    if (!canEditActiveLayer || widthMeters <= 0 || heightMeters <= 0) return;
+  const placeStorePreset = useCallback((
+    src: string,
+    naturalWidth: number,
+    naturalHeight: number,
+    widthMeters: number,
+    name: string,
+  ) => {
+    if (!canEditActiveLayer || !src || naturalWidth <= 0 || naturalHeight <= 0 || widthMeters <= 0) return;
     const widthWorld = (widthMeters / metersPerSquare) * GRID_PX;
-    const heightWorld = (heightMeters / metersPerSquare) * GRID_PX;
+    const heightWorld = widthWorld * naturalHeight / naturalWidth;
     const center = viewportCenterWorld();
     pushHistory();
     const object: SketchObject = {
-      id: idCounterRef.current++, layerId: activeLayerId, type: 'rect',
+      id: idCounterRef.current++, layerId: activeLayerId, type: 'image',
       x1: center.x - widthWorld / 2, y1: center.y - heightWorld / 2,
       x2: center.x + widthWorld / 2, y2: center.y + heightWorld / 2,
-      color, width: lineWidth, dash, opacity: 1, visible: true, locked: false,
+      src, name, color: '#14181D', width: 1, dash: 'solid', opacity: 1, visible: true, locked: false,
     };
     setObjects((current) => [...current, object]);
+    // Requirement presets behave like the reference HTML: after insertion,
+    // switch to Select and keep the new plan selected so it can be positioned.
+    setToolState('select');
     setSelectedId(object.id);
     setSelectedIds([object.id]);
-  }, [activeLayerId, canEditActiveLayer, color, dash, lineWidth, metersPerSquare, pushHistory, viewportCenterWorld]);
+  }, [activeLayerId, canEditActiveLayer, metersPerSquare, pushHistory, viewportCenterWorld]);
 
   const updateProject = useCallback((patch: Partial<ProjectState>) => {
     setProject((current) => ({ ...current, ...patch }));
@@ -611,6 +770,39 @@ export function useCanvasEngine() {
     });
   }, []);
 
+  const setChecklistInput = useCallback((index: number, key: string, value: string) => {
+    setProject((current) => {
+      const checklist = current.checklist.map((item) => ({
+        done: item.done,
+        inputs: { ...item.inputs },
+        opts: { ...item.opts },
+      }));
+      while (checklist.length <= index) checklist.push(emptyChecklistItem());
+      checklist[index] = {
+        ...checklist[index],
+        inputs: { ...checklist[index].inputs, [key]: value },
+      };
+      return { ...current, checklist };
+    });
+  }, []);
+
+  const toggleChecklistOption = useCallback((index: number, option: string) => {
+    setProject((current) => {
+      const checklist = current.checklist.map((item) => ({
+        done: item.done,
+        inputs: { ...item.inputs },
+        opts: { ...item.opts },
+      }));
+      while (checklist.length <= index) checklist.push(emptyChecklistItem());
+      const selected = checklist[index].opts[option] === true;
+      checklist[index] = {
+        ...checklist[index],
+        opts: { ...checklist[index].opts, [option]: !selected },
+      };
+      return { ...current, checklist };
+    });
+  }, []);
+
   const newProject = useCallback(() => {
     resetHistory();
     idCounterRef.current = 1;
@@ -621,7 +813,7 @@ export function useCanvasEngine() {
     setLayers([initialLayer]);
     setActiveLayerId(initialLayer.id);
     setView({ ...DEFAULT_VIEW });
-    setProject(cloneProjectState(DEFAULT_PROJECT));
+    setProject(createDefaultProjectState());
     setScaleState(100);
     setCalibrationMetersPerSquare(null);
     setDimensionObjectIds([]);
@@ -630,7 +822,7 @@ export function useCanvasEngine() {
 
   const exportProject = useCallback((): ProjectFile => ({
     app: 'StoreSketch',
-    version: 4,
+    version: 5,
     meta: {
       ...cloneProjectState(project),
       scale: String(scale),
@@ -645,7 +837,7 @@ export function useCanvasEngine() {
 
   const loadProject = useCallback((raw: unknown) => {
     const data = validateProjectFile(raw);
-    const version = data.version === 4 ? 4 : data.version === 3 ? 3 : data.version === 2 ? 2 : 1;
+    const version = data.version === 5 ? 5 : data.version === 4 ? 4 : data.version === 3 ? 3 : data.version === 2 ? 2 : 1;
     const loadedLayers = version >= 3 ? sanitizeLayers(data.layers) : [createDefaultLayer()];
     const layerIds = new Set(loadedLayers.map((layer) => layer.id));
     const fallbackLayerId = loadedLayers[loadedLayers.length - 1].id;
@@ -688,7 +880,8 @@ export function useCanvasEngine() {
       application: safeString(meta.application),
       shopName: safeString(meta.shopName),
       requirement: safeString(meta.requirement),
-      north: safeNumber(meta.north, 0),
+      north: ((safeNumber(meta.north, 0) % 360) + 360) % 360,
+      createdDate: safeString(meta.createdDate) || localDateIso(),
       checklist: sanitizeChecklist(meta.checklist),
     });
     const existingIds = new Set(loadedObjects.map((object) => object.id));
@@ -713,7 +906,7 @@ export function useCanvasEngine() {
     layers, activeLayerId, activeLayer, canEditActiveLayer,
     activateLayer, createLayer, renameLayer, toggleLayerVisibility, toggleLayerLock, moveLayer, deleteLayer,
     view, setView,
-    project, updateProject, setChecklistDone,
+    project, updateProject, setChecklistDone, setChecklistInput, toggleChecklistOption,
     tool, setTool,
     color, setColor,
     lineWidth, setLineWidth,
@@ -723,16 +916,16 @@ export function useCanvasEngine() {
     snapLineEnabled, setSnapLineEnabled,
     dimEnabled, setDimEnabled, dimensionObjectIds, toggleDimensionObject, clearDimensions,
     gridVisible, setGridVisible,
-    scale, setScale, metersPerSquare, isCalibrated, calibrationMetersPerSquare, applyCalibration, clearCalibration,
+    scale, setScale, metersPerSquare, effectiveScale, scaleLabel, isCalibrated, calibrationMetersPerSquare, applyCalibration, clearCalibration,
     selectedId, setSelectedId, selectedIds, setSelectedIds,
     selectObject, selectAllObjects, clearSelection,
-    selectedObjectIds, beginSelectedStyleEdit, endSelectedStyleEdit, updateSelectedOpacity,
+    selectedObjectIds, beginSelectedStyleEdit, endSelectedStyleEdit, updateSelectedOpacity, resizeSelectedObjectsToMeters,
     pushHistory, undo, redo, canUndo, canRedo,
     nextId, addObject, removeObject, removeObjects, deleteSelectedObjects,
     duplicateObjects, duplicateSelectedObjects,
     clearAll, newProject,
     exportProject, loadProject,
-    importImage, createAutoRectangle, setCanvasViewportSize,
+    importImage, placeStorePreset, setCanvasViewportSize,
     pointerToWorld, pointerToWorldRaw,
   };
 }

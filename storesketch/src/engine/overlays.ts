@@ -3,7 +3,7 @@ import { GRID_PX } from './constants';
 import { intrinsicRectCorners, objectBounds, objectCenter, rotatePoint, textCorners, type Bounds } from './bounds';
 import { worldToScreen } from './geometry';
 
-export function drawEditBox(ctx: CanvasRenderingContext2D, bounds: Bounds, view: ViewState, metersPerSquare: number) {
+export function drawEditBox(ctx: CanvasRenderingContext2D, bounds: Bounds, view: ViewState, _metersPerSquare: number) {
   const topLeft = worldToScreen({ x: bounds.left, y: bounds.top }, view);
   const bottomRight = worldToScreen({ x: bounds.right, y: bounds.bottom }, view);
   const padding = 7;
@@ -30,15 +30,7 @@ export function drawEditBox(ctx: CanvasRenderingContext2D, bounds: Bounds, view:
   ctx.lineTo(centerX, rotateY);
   ctx.stroke();
   ctx.fillRect(centerX - 6, rotateY - 6, 12, 12);
-  const label = `${((bounds.right - bounds.left) / 24 * metersPerSquare).toFixed(2)} × ${((bounds.bottom - bounds.top) / 24 * metersPerSquare).toFixed(2)} ม.`;
-  ctx.font = '12px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const width = ctx.measureText(label).width + 12;
-  ctx.fillStyle = 'rgba(242,166,60,0.95)';
-  ctx.fillRect(centerX - width / 2, rotateY - 31, width, 20);
-  ctx.fillStyle = '#14181D';
-  ctx.fillText(label, centerX, rotateY - 21);
+  // Size is rendered as a clickable DOM overlay by SelectionSizeEditor.
   ctx.restore();
 }
 

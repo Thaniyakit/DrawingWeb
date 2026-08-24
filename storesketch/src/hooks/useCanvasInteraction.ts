@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { Point, SketchObject, SketchObjectStyle, TextObject, ToolType } from '../types';
-import { containsBounds, groupBounds, normalizeBounds, objectBounds } from '../engine/bounds';
+import { containsBounds, containsPoint, groupBounds, normalizeBounds, objectBounds } from '../engine/bounds';
 import { cutObjectsWithEraser } from '../engine/eraser';
 import { hitTestObject, hitTestObjects } from '../engine/hitTest';
+import { recognizeAutoShape } from '../engine/recognizeShape';
 import { buildDragShape, type DragShapeTool } from '../engine/shapes';
 import {
   editObject,
@@ -19,7 +20,7 @@ import {
 import type { useCanvasEngine } from './useCanvasEngine';
 
 type Engine = ReturnType<typeof useCanvasEngine>;
-type DrawingTool = 'pen' | 'eraser' | DragShapeTool;
+type DrawingTool = 'pen' | 'auto' | 'eraser' | DragShapeTool;
 
 export type DraftingState = {
   tool: DrawingTool;
@@ -201,7 +202,7 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
       return;
     }
 
-    if (tool === 'eraser' || tool === 'pen') {
+    if (tool === 'eraser' || tool === 'pen' || tool === 'auto') {
       draftHistoryPushed.current = false;
       penSnapClosingRef.current = false;
       setPenSnapClosing(false);
@@ -243,7 +244,7 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
           edit.current = { mode: 'rotate', start: rawWorld, initial: selected, bounds };
           return;
         }
-        if (handle || hitTestObject(selected, rawWorld, tolerance)) {
+        if (handle || containsPoint(bounds, rawWorld)) {
           editHistoryPushed.current = false;
           edit.current = {
             mode: handle ? 'resize' : 'move',
@@ -267,9 +268,9 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
       const selectedBounds = selectedObjects.length ? groupBounds(selectedObjects) : null;
       const handle = selectedBounds ? findHandle(rawWorld, selectedBounds, view) : null;
       const onRotate = selectedBounds ? nearRotateHandle(rawWorld, selectedBounds, view) : false;
-      const hitsSelectedObject = selectedObjects.some((object) => hitTestObject(object, rawWorld, tolerance));
+      const insideSelectedFrame = selectedBounds ? containsPoint(selectedBounds, rawWorld) : false;
 
-      if (selectedBounds && (handle || onRotate || hitsSelectedObject)) {
+      if (selectedBounds && (handle || onRotate || insideSelectedFrame)) {
         multiEditHistoryPushed.current = false;
         multiEdit.current = {
           mode: onRotate ? 'rotate' : handle ? 'resize' : 'move',
@@ -352,6 +353,14 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
       if (Math.hypot(penPoint.x - previous.x, penPoint.y - previous.y) > 0.001) {
         drafting.current.points.push(penPoint);
       }
+    } else if (draftingTool === 'auto') {
+      // Auto Draw intentionally records the raw gesture. Snapping the trace to
+      // the grid makes shape recognition less reliable, especially for circles
+      // and curves. The resulting vector object remains fully editable.
+      const previous = drafting.current.points[drafting.current.points.length - 1];
+      if (Math.hypot(rawWorld.x - previous.x, rawWorld.y - previous.y) > 0.75 / view.s) {
+        drafting.current.points.push(rawWorld);
+      }
     } else if (draftingTool === 'eraser') {
       const previous = drafting.current.points[drafting.current.points.length - 1];
       drafting.current.points.push(rawWorld);
@@ -405,6 +414,12 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
         : points;
       pushHistory();
       addObject({ ...baseStyle(), type: 'stroke', points: closedPoints });
+    } else if (draftingTool === 'auto' && points.length > 2) {
+      const recognized = recognizeAutoShape(points, baseStyle());
+      if (recognized) {
+        pushHistory();
+        addObject(recognized);
+      }
     } else if (draftingTool === 'eraser') {
       setErasePaths([]);
     } else if (isDragShapeTool(draftingTool) && points.length > 1) {

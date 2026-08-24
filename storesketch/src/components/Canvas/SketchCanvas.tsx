@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { SketchObject, SketchObjectStyle } from '../../types';
 import { drawGrid, drawObjects } from '../../engine/render';
 import { groupBounds } from '../../engine/bounds';
@@ -8,7 +8,7 @@ import { useCanvasInteraction } from '../../hooks/useCanvasInteraction';
 import type { useCanvasEngine } from '../../hooks/useCanvasEngine';
 import { TextDialog } from './TextDialog';
 import { CalibrationDialog } from './CalibrationDialog';
-import { AutoDrawDialog } from './AutoDrawDialog';
+import { SelectionSizeEditor } from './SelectionSizeEditor';
 
 type Engine = ReturnType<typeof useCanvasEngine>;
 
@@ -16,6 +16,8 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef<HTMLCanvasElement>(null);
+  const compassRef = useRef<HTMLButtonElement>(null);
+  const compassDraggingRef = useRef(false);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [imageRevision, setImageRevision] = useState(0);
 
@@ -34,12 +36,9 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
     selectedId,
     selectedIds,
     gridVisible,
-    scale,
     metersPerSquare,
-    isCalibrated,
+    scaleLabel,
     setCanvasViewportSize,
-    createAutoRectangle,
-    setTool,
     eraserSize,
     dimEnabled,
     dimensionObjectIds,
@@ -120,8 +119,8 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
 
     const draft = drafting.current;
     if (canEditActiveLayer && draft && draft.points.length > 1) {
-      if (draft.tool === 'pen') {
-        const previewPoints = penSnapClosing
+      if (draft.tool === 'pen' || draft.tool === 'auto') {
+        const previewPoints = draft.tool === 'pen' && penSnapClosing
           ? [...draft.points, draft.start]
           : draft.points;
         activePreviews.push({ ...previewStyle, type: 'stroke', points: previewPoints });
@@ -140,14 +139,19 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
       if (layer.id === activeLayerId) renderObjects.push(...activePreviews);
     }
 
+    // Multi-select owns one group frame. Suppress the normal single-object
+    // selection frame so selecting only one object in Multi mode does not draw
+    // two boxes on top of each other.
+    const renderSelectedId = tool === 'multi' ? null : selectedId;
+    const renderSelectedIds = tool === 'multi' ? [] : selectedIds;
     drawObjects(
       context,
       renderObjects,
       view,
       size.w,
       size.h,
-      selectedId,
-      selectedIds,
+      renderSelectedId,
+      renderSelectedIds,
       metersPerSquare,
       erasePaths,
       true,
@@ -217,6 +221,62 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
       ? 'ล็อกอยู่'
       : 'กำลังแก้ไข';
 
+  function updateNorthFromPointer(event: ReactPointerEvent<HTMLButtonElement>) {
+    const compass = compassRef.current;
+    if (!compass) return;
+    const rect = compass.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = event.clientX - centerX;
+    const dy = event.clientY - centerY;
+    if (Math.hypot(dx, dy) < 4) return;
+    const degrees = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360) % 360;
+    updateProject({ north: Math.round(degrees * 10) / 10 });
+  }
+
+  function onCompassPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    compassDraggingRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateNorthFromPointer(event);
+  }
+
+  function onCompassPointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!compassDraggingRef.current) return;
+    event.preventDefault();
+    updateNorthFromPointer(event);
+  }
+
+  function onCompassPointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!compassDraggingRef.current) return;
+    compassDraggingRef.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function formatProjectDate(value: string): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return value || '—';
+    return `${match[3]}/${match[2]}/${Number(match[1]) + 543}`;
+  }
+
+  const compassDirections = [
+    { label: 'N', offset: 0 },
+    { label: 'E', offset: 90 },
+    { label: 'S', offset: 180 },
+    { label: 'W', offset: 270 },
+  ].map((direction) => {
+    const radians = (project.north + direction.offset) * Math.PI / 180;
+    const radius = 23;
+    return {
+      ...direction,
+      x: 33 + Math.sin(radians) * radius,
+      y: 33 - Math.cos(radians) * radius,
+    };
+  });
+
   return (
     <div ref={wrapRef} className="canvas-wrap">
       <canvas ref={gridRef} id="gridCanvas" />
@@ -230,6 +290,8 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
         onWheel={onWheel}
       />
 
+      <SelectionSizeEditor engine={engine} canvasWidth={size.w} canvasHeight={size.h} />
+
       <div className={`active-layer-pill${canEditActiveLayer ? '' : ' blocked'}`}>
         <span className="active-layer-dot" />
         <strong>{activeLayer?.name ?? 'Layer'}</strong>
@@ -237,13 +299,28 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
       </div>
 
       <button
+        ref={compassRef}
         className="compass"
-        title="หมุนทิศเหนือ"
-        onClick={() => updateProject({ north: (project.north + 15) % 360 })}
+        title={`ลากเพื่อหมุนเข็มทิศ • เหนือ ${project.north.toFixed(1)}°`}
+        aria-label={`เข็มทิศ ทิศเหนือ ${project.north.toFixed(1)} องศา`}
+        onPointerDown={onCompassPointerDown}
+        onPointerMove={onCompassPointerMove}
+        onPointerUp={onCompassPointerUp}
+        onPointerCancel={onCompassPointerUp}
       >
-        <div className="compass-needle" style={{ transform: `rotate(${project.north}deg)` }}>N</div>
+        <div className="compass-crosshair" />
+        <div className="compass-needle" style={{ transform: `rotate(${project.north}deg)` }}><span /></div>
+        {compassDirections.map((direction) => (
+          <span
+            key={direction.label}
+            className={`compass-direction compass-${direction.label.toLowerCase()}`}
+            style={{ left: direction.x, top: direction.y }}
+          >
+            {direction.label}
+          </span>
+        ))}
       </button>
-      <div className="compass-hint">ลากเพื่อหมุนทิศ</div>
+      <div className="compass-hint">ลากค้างเพื่อหมุน • N/E/S/W</div>
 
       <label className="shopname-wrap">
         <span>ชื่อร้าน</span>
@@ -255,12 +332,29 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
       </label>
 
       <div className="titleblock">
-        <div className="tb-row"><span>PROJECT</span><strong>STORE SKETCH</strong></div>
-        <div className="tb-row"><span>SCALE</span><strong>{isCalibrated ? 'CALIBRATED' : `1:${scale}`}</strong></div>
-        <div className="tb-row"><span>GRID</span><strong>24 px</strong></div>
+        <div className="tb-row tb-edit-row">
+          <span>โครงการ</span>
+          <input
+            value={project.projectName}
+            onChange={(event) => updateProject({ projectName: event.target.value })}
+            placeholder="ชื่อโครงการ"
+            aria-label="ชื่อโครงการ"
+          />
+        </div>
+        <div className="tb-row tb-edit-row">
+          <span>Application</span>
+          <input
+            value={project.application}
+            onChange={(event) => updateProject({ application: event.target.value })}
+            placeholder="เช่น งานต่อเติมร้าน"
+            aria-label="Application"
+          />
+        </div>
+        <div className="tb-row"><span>มาตราส่วน</span><strong>{scaleLabel}</strong></div>
+        <div className="tb-row"><span>วันที่</span><strong>{formatProjectDate(project.createdDate)}</strong></div>
       </div>
 
-      <div className="hint-pill show">{tool === 'calib' ? 'CALIBRATE: คลิกจุดแรก แล้วคลิกจุดที่สองบนระยะที่ทราบจริง' : dimEnabled ? 'DIM: คลิกวัตถุเพื่อเพิ่ม/เอาขนาดออก • ขนาดที่วางแล้วจะค้างอยู่' : 'ใช้ล้อเมาส์เพื่อซูม • Shift + ลากเพื่อเลื่อน'}</div>
+      <div className="hint-pill show">{tool === 'calib' ? 'CALIBRATE: คลิกจุดแรก แล้วคลิกจุดที่สองบนระยะที่ทราบจริง' : tool === 'auto' ? 'AUTO DRAW: วาดคร่าว ๆ แล้วปล่อยเมาส์ • ระบบจะเดา เส้น / โค้ง / สี่เหลี่ยม / วงกลม / วงรี' : dimEnabled ? 'DIM: คลิกวัตถุเพื่อเพิ่ม/เอาขนาดออก • ขนาดที่วางแล้วจะค้างอยู่' : 'ใช้ล้อเมาส์เพื่อซูม • Shift + ลากเพื่อเลื่อน'}</div>
 
       {canEditActiveLayer && tool === 'poly' && polyPoints.length > 0 && (
         <div className="poly-bar open">
@@ -282,15 +376,6 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
         />
       )}
 
-      {tool === 'auto' && (
-        <AutoDrawDialog
-          onCancel={() => setTool('select')}
-          onCreate={(widthMeters, heightMeters) => {
-            createAutoRectangle(widthMeters, heightMeters);
-            setTool('select');
-          }}
-        />
-      )}
     </div>
   );
 }
