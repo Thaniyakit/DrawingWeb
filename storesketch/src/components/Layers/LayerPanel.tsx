@@ -60,9 +60,9 @@ export function LayerPanel({ engine, onHide }: { engine: Engine; onHide: () => v
         <div className="panel-head-actions">
           <small>{layers.length}</small>
           <button className="li-btn layer-add-btn" title="สร้าง Layer ใหม่" onClick={createLayer}>+</button>
-          <button className="li-btn" title="ซ่อนแผง" onClick={onHide}>
+          {/* <button className="li-btn" title="ซ่อนแผง" onClick={onHide}>
             <Icon name="eyeoff" size={16} />
-          </button>
+          </button> */}
         </div>
       </div>
 

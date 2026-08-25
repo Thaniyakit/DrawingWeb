@@ -86,6 +86,12 @@ html, body, #root {
   width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.16);
   color: var(--chalk); padding: 7px 8px; border-radius: var(--radius); font-size: 12px; margin-bottom: 5px;
 }
+.sel option {
+  background-color: #1a1d21; /* พื้นหลังเมนูสีเข้ม */
+  color: #ffffff;            /* ตัวอักษรสีขาวชัดเจน */
+  padding: 8px;
+  font-size: 12px;
+}
 .side-lbl { font-size: 10px; color: var(--steel); margin: 2px 0 3px 3px; }
 .eraser-input { appearance: textfield; }
 .eraser-input::-webkit-inner-spin-button, .eraser-input::-webkit-outer-spin-button { opacity: 1; }

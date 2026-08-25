@@ -198,7 +198,7 @@ export function useCanvasEngine() {
   const [lineWidth, setLineWidth] = useState(2);
   const [eraserSize, setEraserSize] = useState(26);
   const [dash, setDash] = useState<DashStyle>('solid');
-  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapEnabled, setSnapEnabled] = useState(false);
   const [snapLineEnabled, setSnapLineEnabled] = useState(false);
   const [dimEnabled, setDimEnabledState] = useState(false);
   const [dimensionObjectIds, setDimensionObjectIds] = useState<number[]>([]);

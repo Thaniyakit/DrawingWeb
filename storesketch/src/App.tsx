@@ -14,7 +14,7 @@ export default function App() {
   return (
     <div className="app">
       <TopBar engine={engine} />
-      <RequirementBar engine={engine} />
+      {/* <RequirementBar engine={engine} /> */}
       <div className="body-row">
         <ToolSidebar engine={engine} />
         <SketchCanvas engine={engine} />

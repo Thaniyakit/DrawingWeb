@@ -99,6 +99,25 @@ export function ToolSidebar({ engine }: { engine: Engine }) {
 
   return (
     <aside className="side">
+	  <div className="side-sec">
+		<div className="side-lbl">มาตราส่วน</div>
+        <select
+          className="sel"
+          value={isCalibrated ? 'calibrated' : String(scale)}
+          onChange={(event) => {
+            if (event.target.value !== 'calibrated') setScale(Number(event.target.value));
+          }}
+        >
+          {isCalibrated && <option value="calibrated">{scaleLabel} (สอบเทียบ)</option>}
+          {SCALE_OPTIONS.map((s) => <option key={s} value={s}>1:{s}</option>)}
+        </select>
+        {isCalibrated && (
+          <div className="calibration-status">
+            <div><strong>{scaleLabel}</strong><span>{metersPerSquare.toFixed(4)} ม./ช่อง</span></div>
+            <button className="mini-action" onClick={clearCalibration}>กลับไปใช้ 1:{scale}</button>
+          </div>
+        )}
+	  </div>
       <div className="side-sec">
         <h4>เครื่องมือ</h4>
         <div className="tool-grid">
@@ -147,23 +166,7 @@ export function ToolSidebar({ engine }: { engine: Engine }) {
           <button className="tool-btn" disabled={!canRedo} onClick={redo} title="ทำซ้ำ (Ctrl/Cmd+Shift+Z หรือ Ctrl/Cmd+Y)"><Icon name="redo" /></button>
           <button className="tool-btn" onClick={confirmClearAll} title="ล้าง Object ทั้งหมดในหน้านี้"><Icon name="clear" /></button>
         </div>
-        <div className="side-lbl">มาตราส่วน</div>
-        <select
-          className="sel"
-          value={isCalibrated ? 'calibrated' : String(scale)}
-          onChange={(event) => {
-            if (event.target.value !== 'calibrated') setScale(Number(event.target.value));
-          }}
-        >
-          {isCalibrated && <option value="calibrated">{scaleLabel} (สอบเทียบ)</option>}
-          {SCALE_OPTIONS.map((s) => <option key={s} value={s}>1:{s}</option>)}
-        </select>
-        {isCalibrated && (
-          <div className="calibration-status">
-            <div><strong>{scaleLabel}</strong><span>{metersPerSquare.toFixed(4)} ม./ช่อง</span></div>
-            <button className="mini-action" onClick={clearCalibration}>กลับไปใช้ 1:{scale}</button>
-          </div>
-        )}
+        
       </div>
 
       <div className="side-sec">
