@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
-import type { Point, SketchObject, SketchObjectStyle, TextObject, ToolType } from '../types';
+import type { Point, SketchObjectStyle, TextObject, ToolType } from '../types';
 import { containsBounds, containsPoint, groupBounds, normalizeBounds, objectBounds } from '../engine/bounds';
 import { cutObjectsWithEraser } from '../engine/eraser';
 import { hitTestObject, hitTestObjects } from '../engine/hitTest';

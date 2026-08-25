@@ -157,5 +157,5 @@ export async function exportScenePdf(input: ExportSceneInput, fileName: string) 
   const jpegUrl = canvas.toDataURL('image/jpeg', 0.92);
   const jpeg = dataUrlBytes(jpegUrl);
   const pdf = buildJpegPdf(jpeg, canvas.width, canvas.height);
-  downloadBlob(new Blob([pdf], { type: 'application/pdf' }), `${fileName}.pdf`);
+  downloadBlob(new Blob([pdf as unknown as BlobPart], { type: 'application/pdf' }), `${fileName}.pdf`);
 }

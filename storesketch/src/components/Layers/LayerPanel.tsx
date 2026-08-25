@@ -5,7 +5,7 @@ import { Icon } from '../Icon';
 
 type Engine = ReturnType<typeof useCanvasEngine>;
 
-export function LayerPanel({ engine, onHide }: { engine: Engine; onHide: () => void }) {
+export function LayerPanel({ engine }: { engine: Engine; onHide: () => void }) {
   const {
     objects,
     layers,
