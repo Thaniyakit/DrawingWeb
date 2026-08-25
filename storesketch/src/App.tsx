@@ -3,7 +3,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { TopBar } from './components/TopBar';
 import { ToolSidebar } from './components/Sidebar/ToolSidebar';
 import { SketchCanvas } from './components/Canvas/SketchCanvas';
-import { RequirementBar } from './components/RequirementBar';
+// import { RequirementBar } from './components/RequirementBar';
 import { RightPanel } from './components/RightPanel';
 import './App.css';
 
