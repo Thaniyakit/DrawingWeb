@@ -89,8 +89,10 @@ function sanitizeView(value: unknown): ViewState {
   const view = value as Partial<ViewState>;
   return {
     s: Math.max(0.2, Math.min(5, safeNumber(view.s, 1))),
-    tx: safeNumber(view.tx, 0),
-    ty: safeNumber(view.ty, 0),
+    // World coordinates start at 0,0. Positive translation would expose
+    // negative grid coordinates to the left/top, so never restore it.
+    tx: Math.min(0, safeNumber(view.tx, 0)),
+    ty: Math.min(0, safeNumber(view.ty, 0)),
   };
 }
 
@@ -892,7 +894,13 @@ export function useCanvasEngine() {
   }, [clearSelection, resetHistory]);
 
   const pointerToWorldRaw = useCallback(
-    (screenPt: Point): Point => screenToWorld(screenPt, view),
+    (screenPt: Point): Point => {
+      const world = screenToWorld(screenPt, view);
+      // StoreSketch uses a top-left world origin. Keep all interactive world
+      // coordinates at or above zero, including pointer capture outside the
+      // canvas while drawing.
+      return { x: Math.max(0, world.x), y: Math.max(0, world.y) };
+    },
     [view],
   );
 

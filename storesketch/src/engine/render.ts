@@ -27,10 +27,12 @@ export function drawGrid(
 
   // Use world grid indices rather than view.tx % step so labels keep the
   // correct real-world value while the user pans the canvas.
-  const firstColumn = Math.floor(-view.tx / step) - 1;
-  const lastColumn = Math.ceil((w - view.tx) / step) + 1;
-  const firstRow = Math.floor(-view.ty / step) - 1;
-  const lastRow = Math.ceil((h - view.ty) / step) + 1;
+  // The drawing world starts at (0, 0). Never draw or label negative grid
+  // indices even if an old project contains an out-of-range saved view.
+  const firstColumn = Math.max(0, Math.floor(-view.tx / step) - 1);
+  const lastColumn = Math.max(0, Math.ceil((w - view.tx) / step) + 1);
+  const firstRow = Math.max(0, Math.floor(-view.ty / step) - 1);
+  const lastRow = Math.max(0, Math.ceil((h - view.ty) / step) + 1);
 
   ctx.strokeStyle = 'rgba(20,24,29,0.08)';
   ctx.lineWidth = 1;

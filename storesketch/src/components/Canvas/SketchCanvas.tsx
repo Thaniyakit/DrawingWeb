@@ -49,6 +49,7 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
   const interaction = useCanvasInteraction(engine, drawRef);
   const {
     drafting,
+    isPanning,
     multiBox,
     polyPoints,
     draftVersion,
@@ -283,10 +284,12 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
       <canvas
         ref={drawRef}
         id="drawCanvas"
+        className={`${tool === 'pan' ? 'pan-tool' : ''}${isPanning ? ' is-panning' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onLostPointerCapture={onPointerUp}
         onWheel={onWheel}
       />
 
@@ -354,7 +357,7 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
         <div className="tb-row"><span>วันที่</span><strong>{formatProjectDate(project.createdDate)}</strong></div>
       </div>
 
-      <div className="hint-pill show">{tool === 'calib' ? 'CALIBRATE: คลิกจุดแรก แล้วคลิกจุดที่สองบนระยะที่ทราบจริง' : tool === 'auto' ? 'AUTO DRAW: วาดคร่าว ๆ แล้วปล่อยเมาส์ • ระบบจะเดา เส้น / โค้ง / สี่เหลี่ยม / วงกลม / วงรี' : dimEnabled ? 'DIM: คลิกวัตถุเพื่อเพิ่ม/เอาขนาดออก • ขนาดที่วางแล้วจะค้างอยู่' : 'ใช้ล้อเมาส์เพื่อซูม • Shift + ลากเพื่อเลื่อน'}</div>
+      <div className="hint-pill show">{tool === 'calib' ? 'CALIBRATE: คลิกจุดแรก แล้วคลิกจุดที่สองบนระยะที่ทราบจริง' : tool === 'auto' ? 'AUTO DRAW: วาดคร่าว ๆ แล้วปล่อยเมาส์ • ระบบจะเดา เส้น / โค้ง / สี่เหลี่ยม / วงกลม / วงรี' : tool === 'pan' ? 'HAND: กดค้างแล้วลากเพื่อเลื่อนกระดาน • ใช้ได้ทั้งเมาส์และการสัมผัส' : dimEnabled ? 'DIM: คลิกวัตถุเพื่อเพิ่ม/เอาขนาดออก • ขนาดที่วางแล้วจะค้างอยู่' : 'ใช้ล้อเมาส์เพื่อซูม • Shift + ลากเพื่อเลื่อน'}</div>
 
       {canEditActiveLayer && tool === 'poly' && polyPoints.length > 0 && (
         <div className="poly-bar open">

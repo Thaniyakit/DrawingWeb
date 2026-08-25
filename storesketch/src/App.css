@@ -104,6 +104,8 @@ html, body, #root {
 .canvas-wrap { position: relative; flex: 1; overflow: hidden; background: #FFFFFF; touch-action: none; min-width: 0; }
 #gridCanvas, #drawCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 #drawCanvas { cursor: crosshair; }
+#drawCanvas.pan-tool { cursor: grab; }
+#drawCanvas.is-panning { cursor: grabbing; }
 .compass {
   position: absolute; top: 12px; left: 12px; width: 66px; height: 66px; padding: 0; border-radius: 50%;
   background: rgba(255,255,255,.94); border: 2px solid var(--navy); box-shadow: 0 3px 10px rgba(0,0,0,.18);

@@ -4,6 +4,7 @@ import { containsBounds, containsPoint, groupBounds, normalizeBounds, objectBoun
 import { cutObjectsWithEraser } from '../engine/eraser';
 import { hitTestObject, hitTestObjects } from '../engine/hitTest';
 import { recognizeAutoShape } from '../engine/recognizeShape';
+import { clampPan } from '../engine/geometry';
 import { buildDragShape, type DragShapeTool } from '../engine/shapes';
 import {
   editObject,
@@ -90,6 +91,9 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
 
   const drafting = useRef<DraftingState | null>(null);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const panPoint = useRef<{ x: number; y: number } | null>(null);
+  const panFrame = useRef<number | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
   const multiStart = useRef<Point | null>(null);
   const [multiBox, setMultiBox] = useState<MultiBox | null>(null);
   const [polyPoints, setPolyPoints] = useState<Point[]>([]);
@@ -110,6 +114,7 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
 
   useEffect(() => () => {
     if (editFrame.current !== null) cancelAnimationFrame(editFrame.current);
+    if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
   }, []);
 
   useEffect(() => {
@@ -120,9 +125,16 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
     }
   }, [tool]);
 
+  useEffect(() => {
+    // Changing tools while a pointer is down should never leave the canvas in
+    // a stuck grabbing state.
+    cancelPan();
+  }, [tool]);
+
   // Switching/locking/hiding a layer must cancel any in-progress operation from the old layer.
   useEffect(() => {
     drafting.current = null;
+    cancelPan();
     edit.current = null;
     multiEdit.current = null;
     multiStart.current = null;
@@ -161,8 +173,10 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
     const snappedWorld = pointerToWorld(screen);
     const tolerance = 8 / view.s;
 
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+    if ((tool === 'pan' && e.button === 0) || e.button === 1 || (e.button === 0 && e.shiftKey)) {
       panStart.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty };
+      panPoint.current = { x: e.clientX, y: e.clientY };
+      setIsPanning(true);
       return;
     }
 
@@ -295,11 +309,11 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
 
   function onPointerMove(e: ReactPointerEvent) {
     if (panStart.current) {
-      setView((current) => ({
-        ...current,
-        tx: panStart.current!.tx + e.clientX - panStart.current!.x,
-        ty: panStart.current!.ty + e.clientY - panStart.current!.y,
-      }));
+      // Pointer events can arrive much faster than the browser can repaint.
+      // Keep only the latest pointer position and update the view once per
+      // animation frame so rapid Hand-tool drags cannot flood React renders.
+      panPoint.current = { x: e.clientX, y: e.clientY };
+      schedulePanFrame();
       return;
     }
 
@@ -383,7 +397,8 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
   }
 
   function onPointerUp() {
-    panStart.current = null;
+    flushPanFrame();
+    cancelPan();
     flushEditFrame();
 
     if (multiStart.current && multiBox) {
@@ -431,6 +446,54 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
     penSnapClosingRef.current = false;
     setPenSnapClosing(false);
     setDraftVersion((value) => value + 1);
+  }
+
+  function applyPanPoint() {
+    const start = panStart.current;
+    const point = panPoint.current;
+    if (!start || !point) return;
+
+    const dx = point.x - start.x;
+    const dy = point.y - start.y;
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+
+    // Apply movement incrementally from the last painted pointer position.
+    // This avoids a sticky/dead zone when the user hits the 0-coordinate
+    // boundary and immediately drags back in the opposite direction.
+    setView((current) => clampPan({
+      s: current.s,
+      tx: current.tx + dx,
+      ty: current.ty + dy,
+    }));
+
+    panStart.current = {
+      x: point.x,
+      y: point.y,
+      tx: 0,
+      ty: 0,
+    };
+  }
+
+  function schedulePanFrame() {
+    if (panFrame.current !== null) return;
+    panFrame.current = requestAnimationFrame(() => {
+      panFrame.current = null;
+      applyPanPoint();
+    });
+  }
+
+  function flushPanFrame() {
+    if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
+    panFrame.current = null;
+    applyPanPoint();
+  }
+
+  function cancelPan() {
+    if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
+    panFrame.current = null;
+    panStart.current = null;
+    panPoint.current = null;
+    setIsPanning(false);
   }
 
   function scheduleEditFrame() {
@@ -564,16 +627,17 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
       const nextScale = Math.max(0.2, Math.min(5, current.s * factor));
       const world = { x: (cursor.x - current.tx) / current.s, y: (cursor.y - current.ty) / current.s };
-      return {
+      return clampPan({
         s: nextScale,
         tx: cursor.x - world.x * nextScale,
         ty: cursor.y - world.y * nextScale,
-      };
+      });
     });
   }
 
   return {
     drafting,
+    isPanning,
     multiBox,
     polyPoints,
     draftVersion,

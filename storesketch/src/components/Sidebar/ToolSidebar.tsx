@@ -7,7 +7,7 @@ import { Icon } from '../Icon';
 type Engine = ReturnType<typeof useCanvasEngine>;
 
 const TOOLS: { id: ToolType; label: string; icon: Parameters<typeof Icon>[0]['name'] }[] = [
-  { id: 'select', label: 'เลือก', icon: 'pointer' }, { id: 'multi', label: 'เลือกหลายชิ้น', icon: 'multi' }, { id: 'pen', label: 'ปากกา', icon: 'pen' },
+  { id: 'select', label: 'เลือก', icon: 'pointer' }, { id: 'pan', label: 'มือ / เลื่อนกระดาน', icon: 'hand' }, { id: 'multi', label: 'เลือกหลายชิ้น', icon: 'multi' }, { id: 'pen', label: 'ปากกา', icon: 'pen' },
   { id: 'auto', label: 'วาดอัตโนมัติ', icon: 'wand' }, { id: 'line', label: 'เส้นตรง', icon: 'line' }, { id: 'rect', label: 'สี่เหลี่ยม', icon: 'rect' },
   { id: 'circle', label: 'วงกลม', icon: 'circle' }, { id: 'poly', label: 'โพลีไลน์', icon: 'poly' }, { id: 'curve', label: 'เส้นโค้ง', icon: 'curve' },
   { id: 'measure', label: 'วัดระยะ', icon: 'ruler' }, { id: 'calib', label: 'สอบเทียบ', icon: 'calib' }, { id: 'text', label: 'ข้อความ', icon: 'text' },
@@ -15,7 +15,7 @@ const TOOLS: { id: ToolType; label: string; icon: Parameters<typeof Icon>[0]['na
 ];
 
 const TOOL_SHORTCUTS: Partial<Record<ToolType, string>> = {
-  select: 'V', multi: 'M', pen: 'P', line: 'L', rect: 'R', circle: 'C',
+  select: 'V', pan: 'H', multi: 'M', pen: 'P', line: 'L', rect: 'R', circle: 'C',
   poly: 'Q', curve: 'B', measure: 'D', text: 'T', eraser: 'E', objeraser: 'X',
 };
 

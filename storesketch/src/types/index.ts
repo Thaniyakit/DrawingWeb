@@ -2,6 +2,7 @@
 
 export type ToolType =
   | 'select'
+  | 'pan'
   | 'multi'
   | 'pen'
   | 'auto'

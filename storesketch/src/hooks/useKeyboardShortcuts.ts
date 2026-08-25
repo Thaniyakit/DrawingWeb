@@ -6,6 +6,7 @@ type Engine = ReturnType<typeof useCanvasEngine>;
 
 const TOOL_SHORTCUTS: Record<string, ToolType> = {
   v: 'select',
+  h: 'pan',
   m: 'multi',
   p: 'pen',
   l: 'line',

@@ -2,12 +2,12 @@ import type { SVGProps } from 'react';
 
 type IconName =
   | 'fileplus' | 'save' | 'folder' | 'imgplus' | 'imgdown' | 'pdf'
-  | 'pointer' | 'multi' | 'pen' | 'wand' | 'line' | 'rect' | 'circle'
+  | 'pointer' | 'hand' | 'multi' | 'pen' | 'wand' | 'line' | 'rect' | 'circle'
   | 'poly' | 'curve' | 'ruler' | 'calib' | 'text' | 'eraser' | 'trash'
   | 'undo' | 'redo' | 'grid' | 'snap' | 'clear' | 'eye' | 'eyeoff'
   | 'lock' | 'unlock' | 'chevron' | 'copy' | 'edit' | 'up' | 'down' | 'shop' | 'osnap';
 
-const paths: Record<IconName, string> = {
+const paths: Record<Exclude<IconName, 'hand'>, string> = {
   fileplus: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M12 18v-6 M9 15h6',
   save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z M17 21v-8H7v8 M7 3v5h8',
   folder: 'M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
@@ -34,5 +34,18 @@ const paths: Record<IconName, string> = {
 };
 
 export function Icon({ name, size = 20, ...props }: { name: IconName; size?: number } & SVGProps<SVGSVGElement>) {
+  if (name === 'hand') {
+    // Four-direction pan icon supplied for the Hand / Pan tool. Using currentColor
+    // keeps it consistent with normal, hover, and active toolbar states.
+    return (
+      <svg {...props} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path d="M12 3L12.3648 2.65803L12 2.26894L11.6352 2.65803L12 3ZM11.5 9C11.5 9.27614 11.7239 9.5 12 9.5C12.2761 9.5 12.5 9.27614 12.5 9H11.5ZM15.3648 5.85803L12.3648 2.65803L11.6352 3.34197L14.6352 6.54197L15.3648 5.85803ZM11.6352 2.65803L8.63523 5.85803L9.36477 6.54197L12.3648 3.34197L11.6352 2.65803ZM11.5 3V9H12.5V3H11.5Z" fill="currentColor" />
+        <path d="M21 12L21.342 12.3648L21.7311 12L21.342 11.6352L21 12ZM15 11.5C14.7239 11.5 14.5 11.7239 14.5 12C14.5 12.2761 14.7239 12.5 15 12.5L15 11.5ZM18.142 15.3648L21.342 12.3648L20.658 11.6352L17.458 14.6352L18.142 15.3648ZM21.342 11.6352L18.142 8.63523L17.458 9.36477L20.658 12.3648L21.342 11.6352ZM21 11.5L15 11.5L15 12.5L21 12.5L21 11.5Z" fill="currentColor" />
+        <path d="M12 21L12.3648 21.342L12 21.7311L11.6352 21.342L12 21ZM11.5 15C11.5 14.7239 11.7239 14.5 12 14.5C12.2761 14.5 12.5 14.7239 12.5 15H11.5ZM15.3648 18.142L12.3648 21.342L11.6352 20.658L14.6352 17.458L15.3648 18.142ZM11.6352 21.342L8.63523 18.142L9.36477 17.458L12.3648 20.658L11.6352 21.342ZM11.5 21V15H12.5V21H11.5Z" fill="currentColor" />
+        <path d="M3 12L2.65803 12.3648L2.26894 12L2.65803 11.6352L3 12ZM9 11.5C9.27614 11.5 9.5 11.7239 9.5 12C9.5 12.2761 9.27614 12.5 9 12.5L9 11.5ZM5.85803 15.3648L2.65803 12.3648L3.34197 11.6352L6.54197 14.6352L5.85803 15.3648ZM2.65803 11.6352L5.85803 8.63523L6.54197 9.36477L3.34197 12.3648L2.65803 11.6352ZM3 11.5L9 11.5L9 12.5L3 12.5L3 11.5Z" fill="currentColor" />
+      </svg>
+    );
+  }
+
   return <svg {...props} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg>;
 }
