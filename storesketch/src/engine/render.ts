@@ -25,10 +25,19 @@ export function drawGrid(
   const step = GRID_PX * view.s;
   if (step < 4) return;
 
+  // Canvas is rendered at devicePixelRatio resolution. Align one-CSS-pixel
+  // grid strokes to the physical pixel grid so thin lines stay crisp on both
+  // normal and Retina displays.
+  const dpr = Math.max(1, ctx.getTransform().a || 1);
+  const physicalLineWidth = Math.max(1, Math.round(dpr));
+  const physicalOffset = physicalLineWidth % 2 === 1 ? 0.5 : 0;
+  const alignStroke = (value: number) => (
+    (Math.round(value * dpr - physicalOffset) + physicalOffset) / dpr
+  );
+
   // Use world grid indices rather than view.tx % step so labels keep the
-  // correct real-world value while the user pans the canvas.
-  // The drawing world starts at (0, 0). Never draw or label negative grid
-  // indices even if an old project contains an out-of-range saved view.
+  // correct real-world value while the user pans the canvas. World starts at
+  // (0, 0), therefore negative indices are never drawn.
   const firstColumn = Math.max(0, Math.floor(-view.tx / step) - 1);
   const lastColumn = Math.max(0, Math.ceil((w - view.tx) / step) + 1);
   const firstRow = Math.max(0, Math.floor(-view.ty / step) - 1);
@@ -38,34 +47,48 @@ export function drawGrid(
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let index = firstColumn; index <= lastColumn; index += 1) {
-    const x = view.tx + index * step;
+    const x = alignStroke(view.tx + index * step);
     ctx.moveTo(x, 0);
     ctx.lineTo(x, h);
   }
   for (let index = firstRow; index <= lastRow; index += 1) {
-    const y = view.ty + index * step;
+    const y = alignStroke(view.ty + index * step);
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
   }
   ctx.stroke();
 
   ctx.save();
-  ctx.fillStyle = 'rgba(20,24,29,0.62)';
+  ctx.fillStyle = 'rgba(20,24,29,0.68)';
   ctx.font = `${Math.max(10, Math.min(13, 11 * view.s))}px monospace`;
   const majorEvery = 5;
+
+  // Do not draw X=0 and Y=0 independently. At the world origin those two
+  // labels used to overlap with slightly different offsets and looked like a
+  // blurry/doubled zero. A single origin label is rendered afterwards.
   ctx.textBaseline = 'top';
   for (let index = firstColumn; index <= lastColumn; index += 1) {
-    if (index % majorEvery !== 0) continue;
+    if (index === 0 || index % majorEvery !== 0) continue;
     const x = view.tx + index * step;
     if (x < 0 || x > w) continue;
     ctx.fillText(`${formatMeters(index * metersPerSquare)} m.`, x + 3, 3);
   }
+
   ctx.textBaseline = 'middle';
   for (let index = firstRow; index <= lastRow; index += 1) {
-    if (index % majorEvery !== 0) continue;
+    if (index === 0 || index % majorEvery !== 0) continue;
     const y = view.ty + index * step;
     if (y < 0 || y > h) continue;
     ctx.fillText(`${formatMeters(index * metersPerSquare)} m.`, 5, y);
+  }
+
+  // With pan clamped to non-positive translation, the world origin is visible
+  // only when it is actually at the top-left boundary. Render exactly one 0.
+  const originX = view.tx;
+  const originY = view.ty;
+  if (originX >= -0.5 && originX <= w && originY >= -0.5 && originY <= h) {
+    ctx.textBaseline = 'top';
+    ctx.fillText('0 m.', Math.max(4, originX + 4), Math.max(3, originY + 3));
   }
   ctx.restore();
 }

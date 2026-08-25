@@ -86,8 +86,14 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
     const canvas = gridRef.current;
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
-    canvas.width = size.w;
-    canvas.height = size.h;
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const backingWidth = Math.max(1, Math.round(size.w * dpr));
+    const backingHeight = Math.max(1, Math.round(size.h * dpr));
+    if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+      canvas.width = backingWidth;
+      canvas.height = backingHeight;
+    }
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     if (gridVisible) {
       drawGrid(context, view, size.w, size.h, metersPerSquare);
@@ -102,8 +108,14 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
     const canvas = drawRef.current;
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
-    canvas.width = size.w;
-    canvas.height = size.h;
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const backingWidth = Math.max(1, Math.round(size.w * dpr));
+    const backingHeight = Math.max(1, Math.round(size.h * dpr));
+    if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+      canvas.width = backingWidth;
+      canvas.height = backingHeight;
+    }
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const previewStyle: SketchObjectStyle = {
       id: -1,
@@ -357,7 +369,7 @@ export function SketchCanvas({ engine }: { engine: Engine }) {
         <div className="tb-row"><span>วันที่</span><strong>{formatProjectDate(project.createdDate)}</strong></div>
       </div>
 
-      <div className="hint-pill show">{tool === 'calib' ? 'CALIBRATE: คลิกจุดแรก แล้วคลิกจุดที่สองบนระยะที่ทราบจริง' : tool === 'auto' ? 'AUTO DRAW: วาดคร่าว ๆ แล้วปล่อยเมาส์ • ระบบจะเดา เส้น / โค้ง / สี่เหลี่ยม / วงกลม / วงรี' : tool === 'pan' ? 'HAND: กดค้างแล้วลากเพื่อเลื่อนกระดาน • ใช้ได้ทั้งเมาส์และการสัมผัส' : dimEnabled ? 'DIM: คลิกวัตถุเพื่อเพิ่ม/เอาขนาดออก • ขนาดที่วางแล้วจะค้างอยู่' : 'ใช้ล้อเมาส์เพื่อซูม • Shift + ลากเพื่อเลื่อน'}</div>
+      <div className="hint-pill show">{tool === 'calib' ? 'CALIBRATE: คลิกจุดแรก แล้วคลิกจุดที่สองบนระยะที่ทราบจริง' : tool === 'auto' ? 'AUTO DRAW: วาดคร่าว ๆ แล้วปล่อยเมาส์ • ระบบจะเดา เส้น / โค้ง / สี่เหลี่ยม / วงกลม / วงรี' : tool === 'pan' ? 'HAND: กดค้างแล้วลากเพื่อเลื่อนกระดาน • สองนิ้วเพื่อซูม' : dimEnabled ? 'DIM: คลิกวัตถุเพื่อเพิ่ม/เอาขนาดออก • ขนาดที่วางแล้วจะค้างอยู่' : 'ใช้ล้อเมาส์หรือสองนิ้วเพื่อซูม • Shift + ลากเพื่อเลื่อน'}</div>
 
       {canEditActiveLayer && tool === 'poly' && polyPoints.length > 0 && (
         <div className="poly-bar open">

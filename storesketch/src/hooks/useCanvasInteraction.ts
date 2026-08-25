@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
-import type { Point, SketchObjectStyle, TextObject, ToolType } from '../types';
+import type { Point, SketchObjectStyle, TextObject, ToolType, ViewState } from '../types';
 import { containsBounds, containsPoint, groupBounds, normalizeBounds, objectBounds } from '../engine/bounds';
 import { cutObjectsWithEraser } from '../engine/eraser';
 import { hitTestObject, hitTestObjects } from '../engine/hitTest';
@@ -93,6 +93,10 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const panPoint = useRef<{ x: number; y: number } | null>(null);
   const panFrame = useRef<number | null>(null);
+  const touchPoints = useRef<Map<number, Point>>(new Map());
+  const pinch = useRef<{ startDistance: number; startView: ViewState; worldCenter: Point } | null>(null);
+  const pinchFrame = useRef<number | null>(null);
+  const pinchConsumed = useRef(false);
   const [isPanning, setIsPanning] = useState(false);
   const multiStart = useRef<Point | null>(null);
   const [multiBox, setMultiBox] = useState<MultiBox | null>(null);
@@ -115,6 +119,7 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
   useEffect(() => () => {
     if (editFrame.current !== null) cancelAnimationFrame(editFrame.current);
     if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
+    if (pinchFrame.current !== null) cancelAnimationFrame(pinchFrame.current);
   }, []);
 
   useEffect(() => {
@@ -166,8 +171,102 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
     };
   }
 
+  function getTouchPair(): [Point, Point] | null {
+    const points = Array.from(touchPoints.current.values());
+    return points.length >= 2 ? [points[0]!, points[1]!] : null;
+  }
+
+  function beginPinchGesture() {
+    const pair = getTouchPair();
+    const canvas = drawRef.current;
+    if (!pair || !canvas) return;
+
+    const [first, second] = pair;
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    if (distance < 1) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const center = {
+      x: (first.x + second.x) / 2 - rect.left,
+      y: (first.y + second.y) / 2 - rect.top,
+    };
+    const startView = { ...view };
+    const worldCenter = {
+      x: (center.x - startView.tx) / startView.s,
+      y: (center.y - startView.ty) / startView.s,
+    };
+
+    pinch.current = { startDistance: distance, startView, worldCenter };
+    pinchConsumed.current = true;
+
+    // A second finger means the user intends to navigate, not continue the
+    // first finger's drawing/selection gesture. Cancel transient operations
+    // without committing them, then let the two-finger gesture own the view.
+    drafting.current = null;
+    cancelPan();
+    edit.current = null;
+    multiEdit.current = null;
+    multiStart.current = null;
+    setMultiBox(null);
+    penSnapClosingRef.current = false;
+    setPenSnapClosing(false);
+    clearSelection();
+    setDraftVersion((value) => value + 1);
+  }
+
+  function applyPinchGesture() {
+    const state = pinch.current;
+    const pair = getTouchPair();
+    const canvas = drawRef.current;
+    if (!state || !pair || !canvas) return;
+
+    const [first, second] = pair;
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    if (distance < 1) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const center = {
+      x: (first.x + second.x) / 2 - rect.left,
+      y: (first.y + second.y) / 2 - rect.top,
+    };
+    const factor = distance / state.startDistance;
+    const nextScale = Math.max(0.2, Math.min(5, state.startView.s * factor));
+
+    // Keep the world point under the midpoint of the two fingers stationary.
+    // Moving both fingers together therefore pans naturally while pinching.
+    setView(clampPan({
+      s: nextScale,
+      tx: center.x - state.worldCenter.x * nextScale,
+      ty: center.y - state.worldCenter.y * nextScale,
+    }));
+  }
+
+  function schedulePinchFrame() {
+    if (pinchFrame.current !== null) return;
+    pinchFrame.current = requestAnimationFrame(() => {
+      pinchFrame.current = null;
+      applyPinchGesture();
+    });
+  }
+
+  function flushPinchFrame() {
+    if (pinchFrame.current !== null) cancelAnimationFrame(pinchFrame.current);
+    pinchFrame.current = null;
+    applyPinchGesture();
+  }
+
   function onPointerDown(e: ReactPointerEvent) {
     (e.target as Element).setPointerCapture(e.pointerId);
+
+    if (e.pointerType === 'touch') {
+      touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touchPoints.current.size >= 2) {
+        beginPinchGesture();
+        return;
+      }
+      if (pinchConsumed.current) return;
+    }
+
     const screen = getPos(e);
     const rawWorld = pointerToWorldRaw(screen);
     const snappedWorld = pointerToWorld(screen);
@@ -308,6 +407,17 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
   }
 
   function onPointerMove(e: ReactPointerEvent) {
+    if (e.pointerType === 'touch' && touchPoints.current.has(e.pointerId)) {
+      touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch.current) {
+        schedulePinchFrame();
+        return;
+      }
+      // After a pinch ends with one finger still touching the canvas, ignore
+      // that finger until it is lifted so it cannot accidentally draw/select.
+      if (pinchConsumed.current) return;
+    }
+
     if (panStart.current) {
       // Pointer events can arrive much faster than the browser can repaint.
       // Keep only the latest pointer position and update the view once per
@@ -396,7 +506,24 @@ export function useCanvasInteraction(engine: Engine, drawRef: CanvasRef) {
     setDraftVersion((value) => value + 1);
   }
 
-  function onPointerUp() {
+  function onPointerUp(e?: ReactPointerEvent) {
+    if (e?.pointerType === 'touch' && touchPoints.current.has(e.pointerId)) {
+      touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const wasPinchGesture = pinchConsumed.current;
+      if (pinch.current) flushPinchFrame();
+      touchPoints.current.delete(e.pointerId);
+      if (touchPoints.current.size < 2) pinch.current = null;
+      if (touchPoints.current.size === 0) pinchConsumed.current = false;
+
+      if (wasPinchGesture) {
+        cancelPan();
+        edit.current = null;
+        multiEdit.current = null;
+        drafting.current = null;
+        return;
+      }
+    }
+
     flushPanFrame();
     cancelPan();
     flushEditFrame();
